@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Marine Oil-Spill Intelligence System</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #0b1220; color: #e6edf3; }
+  h1 { font-size: 1.4rem; }
+  .upload-box { border: 2px dashed #444; padding: 30px; text-align: center; border-radius: 10px; margin: 20px 0; }
+  button { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+  button:disabled { background: #555; cursor: not-allowed; }
+  .result { margin-top: 25px; padding: 20px; background: #161d2e; border-radius: 10px; }
+  .stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #222; }
+  .vessel { padding: 12px; margin: 8px 0; background: #10192c; border-radius: 8px; border-left: 4px solid #2563eb; }
+  .vessel-score { font-weight: bold; color: #60a5fa; }
+  .explanation { color: #9ca3af; font-size: 0.9rem; margin-top: 4px; }
+  .warning { background: #3a2a10; color: #fbbf24; padding: 10px; border-radius: 6px; font-size: 0.85rem; margin-top: 15px; }
+</style>
+</head>
+<body>
+  <h1>🛢️ Marine Oil-Spill Intelligence System</h1>
+  <p>Upload a SAR image to detect a potential oil spill and rank candidate vessels.</p>
+
+  <div class="upload-box">
+    <input type="file" id="fileInput" accept="image/*">
+    <br><br>
+    <button id="analyzeBtn" onclick="analyze()">Analyze Image</button>
+  </div>
+
+  <div id="output"></div>
+
+<script>
+const API_URL = "http://127.0.0.1:8000/analyze";
+
+async function analyze() {
+  const fileInput = document.getElementById('fileInput');
+  const btn = document.getElementById('analyzeBtn');
+  const output = document.getElementById('output');
+
+  if (!fileInput.files.length) {
+    output.innerHTML = '<p style="color:#f87171">Please choose an image first.</p>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Analyzing...";
+  output.innerHTML = '<p>Running detection pipeline...</p>';
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+
+  try {
+    const res = await fetch(API_URL, { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (!data.spill_detected) {
+      output.innerHTML = '<div class="result"><p>No spill detected in this image.</p></div>';
+      return;
+    }
+
+    let vesselsHtml = data.ranked_vessels.map((v, i) => `
+      <div class="vessel">
+        <div>${i + 1}. ${v.VesselName} (MMSI ${v.MMSI})
+          <span class="vessel-score" style="float:right">score ${v.total_score}</span>
+        </div>
+        <div class="explanation">${v.explanation}</div>
+      </div>
+    `).join("");
+
+    output.innerHTML = `
+      <div class="result">
+        <div class="stat"><span>Estimated spill area</span><span>${data.area_km2.toFixed(3)} km²</span></div>
+        <div class="stat"><span>Detected location</span><span>${data.centroid_latlon[0].toFixed(4)}, ${data.centroid_latlon[1].toFixed(4)}</span></div>
+        <div class="stat"><span>Estimated release origin</span><span>${data.estimated_origin_latlon[0].toFixed(4)}, ${data.estimated_origin_latlon[1].toFixed(4)}</span></div>
+        <div class="stat"><span>Drift direction</span><span>${data.drift_direction_deg.toFixed(1)}°</span></div>
+        <h3 style="margin-top:20px">Ranked Candidate Vessels</h3>
+        ${vesselsHtml}
+        <div class="warning">⚠️ Demo mode: location and vessel data use placeholder values, not yet connected to real satellite geolocation or live AIS feeds.</div>
+      </div>
+    `;
+  } catch (err) {
+    output.innerHTML = `<p style="color:#f87171">Error: ${err.message}. Is the backend server running?</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Analyze Image";
+  }
+}
+</script>
+</body>
+</html>
